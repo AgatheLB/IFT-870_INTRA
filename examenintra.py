@@ -6,16 +6,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-standard_journal_categories = ["ANTHROPOLOGY", "ASTRONOMY AND ASTROPHYSICS", "CIRCUITS", "COMPUTER SCIENCE",
-                               "DENTISTRY", "DERMATOLOGY", "ECOLOGY AND EVOLUTION", "ECONOMICS", "EDUCATION", "ENERGY",
-                               "ENVIRONMENTAL HEALTH", "FOOD SCIENCE", "GASTROENTEROLOGY", "GEOTECHNOLOGY",
-                               "HIGH ENERGY PHYSICS", "HISTORY AND PHILOSOPHY OF SCIENCE", "INFECTIOUS DISEASES",
-                               "INFORMATION SCIENCE", "LAW", "LINGUISTICS", "MARKETING", "MATHEMATICS", "MEDICINE",
-                               "MOLECULAR AND CELL BIOLOGY", "MYCOLOGY", "NEPHROLOGY", "NEUROSCIENCE", "ONCOLOGY",
-                               "OPERATIONS RESEARCH", "OPHTHALMOLOGY", "ORTHOPEDICS", "PHARMACOLOGY",
-                               "PHYSICS AND CHEMISTRY", "PLANT BIOLOGY", "PLASTIC SURGERY", "POLITICAL SCIENCE",
-                               "PSYCHIATRY", "PSYCHOLOGY", "RADIOLOGY", "RHEUMATOLOGY", "ROBOTICS", "SOCIOLOGY",
-                               "SPORTS MEDICINE", "STRUCTURAL ENGINEERING", "UROLOGY", "VETERINARY", "WOOD PRODUCTS"]
+from sklearn.preprocessing import MultiLabelBinarizer
 
 # %%
 """
@@ -232,7 +223,7 @@ plt.show()
 
 print(influence.head())
 
-# TODO: proj_ai, proj_ai_year
+# TODO: proj_ai moyenne
 # %%
 """
 
@@ -248,9 +239,9 @@ paper_count_sum: indique le nombre de citations des articles du jounal
 
 avg_cites_per_paper: indique la moyenne des citations par papier qui sont contenus du journal
 
-proj_ai:
+proj_ai: information sur le score d'influence des articles du journal
 
-proj_ai_year:
+proj_ai_year: spécification de l'année où l'information sur le score d'influence des articles du journal a été établie
 
 """
 
@@ -261,6 +252,15 @@ print(f"Valeurs uniques des attributs de influence:\n"
 print(f"Ratio de valeurs vides pour les attributs de influence:\n"
       f"{get_ratio_missing_values(influence)}")
 
+print(f"Valeurs possibles pour l'attribut proj_ai_year de influence:\n"
+      f"{get_unique_values_of_attribute(influence, 'proj_ai_year')}")
+
+# %%
+"""
+L'attribut proj_ai_year ne présentant qu'une seule valeur nous indique que les valeurs de l'attribut proj_ai ont toutes
+été établies à la même période. 
+"""
+# TODO: proj_ai sum in function of journal
 # %%
 
 """
@@ -379,18 +379,22 @@ print(f"Pas de valeur d'issn manquante dans journal par rapport à price : {chec
 On applique maintenant le merge des trois tables en deux étapes. D'abord, on merge influence dans journal, puis price
 est ensuite mergé dans le résultat du premier merge.
 """
+
 # %%
 
 price = rename_df_headers(price, {"journal_id": "issn", "url": "url_autor"})
 journal = rename_df_headers(journal, {"url": "url_journal"})
 
-temp = pd.merge(journal, influence, on='issn')
+temp = pd.merge(journal, influence, on='issn', how='outer')
 check = len(temp[temp['journal_name_x'] != temp['journal_name_y']])
 print(f"Nombre d'aberrances entre les valeurs journal_name des tables journal et influence: {check}")
 temp = temp.drop(columns=['journal_name_y'])
 temp = rename_df_headers(temp, {"journal_name_x": "journal_name"})
 
-data = pd.merge(price, temp, on='issn')
+print(f"Valeurs uniques des attributs de temp:\n"
+      f"{get_uniqueness_attributes(temp)}")
+
+data = pd.merge(temp, price, on=['issn'], how='outer')
 data = get_df_duplicated_rows_dropped(data)
 
 print(f"Valeurs uniques des attributs de data:\n"
@@ -400,6 +404,52 @@ print(f"Ratio de valeurs vides pour les attributs de data:\n"
 
 # %%
 """
-## B. Y-a-t-il une corrélation entre les catégories de journaux (attribut category) et les coûts de publication 
-(attribut price)? Justifier la réponse.
+On s'assure bien que les valeurs de l'attribut issn de la nouvelle date (data) sont uniques.
 """
+
+# %%
+"""
+## B. Y-a-t-il une corrélation entre les catégories de journaux (attribut category) et les coûts de publication (attribut price)? Justifier la réponse.
+"""
+
+# %%
+
+labelled_data = data[data['category'].notna()]
+data_to_predict = data[data['category'].isna()]
+
+# %%
+# TODO: fix warning view
+
+
+# %%
+
+
+# %%
+
+labelled_data['category'] = labelled_data['category'].str.replace(r'[\.\|&] | [\.\|&] ', '.', regex=True)
+# category_dummies = labelled_data['category'].str.get_dummies(sep='.')
+
+# %%
+
+
+# vectorized one hot to one column
+# temp = labelled_data['category'].str.split('.', expand=True).add_prefix('category_')
+#
+# for header in ['category_0', 'category_1', 'category_2', 'category_3']:
+#     temp[header] = temp[header].str.strip()
+#
+# temp.fillna(value=pd.np.nan, inplace=True)
+#
+# labelled_data = pd.concat([labelled_data, temp], axis=1).drop(columns=['category'])
+#
+# category_dummies = pd.get_dummies(labelled_data[['category_0', 'category_1', 'category_2', 'category_3']],
+#                                   prefix_sep='.',
+#                                   drop_first=True)
+# vectorized_category_dummies = pd.DataFrame(columns=['category'])
+# for index, value in category_dummies.iterrows():
+#     vectorized_category_dummies.at[index, 'category'] = value.ravel().tolist()
+#
+# labelled_data_category_onehot = labelled_data
+# labelled_data_category_onehot['category'] = vectorized_category_dummies['category']
+# labelled_data_category_onehot = labelled_data_category_onehot\
+#     .drop(columns=['category_0', 'category_1', 'category_2', 'category_3'])
