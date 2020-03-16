@@ -6,7 +6,19 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.multioutput import MultiOutputClassifier
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.svm import LinearSVC
 from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.gaussian_process import GaussianProcessClassifier
+from sklearn.gaussian_process.kernels import RBF
+
+import difflib
+from functools import partial
 
 # %%
 """
@@ -359,6 +371,18 @@ print(f"Unicité de l'attribut issn dans la table influence: {check}")
 
 # %%
 """
+Les attributs citation_count_sum, paper_count_sum, avg_cites_per_paper et proj_ai présentent des valeurs nulles que l'on
+décide d'attribuer à 0.
+"""
+
+# %%
+
+headers = ['citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai']
+for header in headers:
+    influence[header] = influence[header].fillna(0)
+
+# %%
+"""
 ## Merge
 Afin de simplifier les opérations, on génère une seule table reprenant les informations des trois tables.
 On vérifie d'abord si les identifiants communs aux différentes tables sont présentes dans les tables à merger.
@@ -418,38 +442,121 @@ labelled_data = data[data['category'].notna()]
 data_to_predict = data[data['category'].isna()]
 
 # %%
-# TODO: fix warning view
-
-
-# %%
-
-
-# %%
 
 labelled_data['category'] = labelled_data['category'].str.replace(r'[\.\|&] | [\.\|&] ', '.', regex=True)
-# category_dummies = labelled_data['category'].str.get_dummies(sep='.')
+category_dummies = labelled_data['category'].str.get_dummies(sep='.')
+category_dummies = category_dummies.add_prefix('category_')
 
 # %%
 
+labelled_data = pd.concat([labelled_data, category_dummies], axis=1)\
+    # .drop(columns=['category'])
 
-# vectorized one hot to one column
-# temp = labelled_data['category'].str.split('.', expand=True).add_prefix('category_')
+# %%
+
+categories_correlation = {}
+
+for header in category_dummies.columns:
+    corr = labelled_data[header].corr(labelled_data['price'])
+    if abs(corr) > 0.1:
+        categories_correlation[header] = corr
+
+fig, ax = plt.subplots()
+plt.bar(categories_correlation.keys(), categories_correlation.values())
+plt.setp(ax.get_xticklabels(), rotation=30, horizontalalignment='right')
+plt.title(f'Catégories présentant des corrélations fortes avec l\'attribut prix et leurs valeurs')
+plt.show()
+
+# %%
+"""
+## C. Construire un modèle pour prédire les valeurs de catégorie de journaux manquantes de la façon la plus précise 
+## possible (cela inclut la sélection d’attributs informatifs, le choix et le paramétrage d’un modèle de classification, 
+## le calcul du score du modèle, l’application du modèle pour prédire les catégories manquantes). Justifier les choix 
+## effectués.
+
+"""
+
+
+# %%
+# TODO: get key words from journal_name, publisher
+
+def apply_sm(s, c1, c2):
+    return difflib.SequenceMatcher(None, s[c1], s[c2]).ratio()
+
+
+# %%
+
+journal_name_score_match_category = pd.Series()
+publisher_name_score_match_category = pd.Series()
+
+
+# %%
+
+# labelled_data = labelled_data.drop(columns=['category'])
 #
-# for header in ['category_0', 'category_1', 'category_2', 'category_3']:
-#     temp[header] = temp[header].str.strip()
+# # %%
 #
-# temp.fillna(value=pd.np.nan, inplace=True)
+# # vectorized_category_dummies = pd.DataFrame(columns=['category'])
+# # for index, value in labelled_data[category_dummies.columns].iterrows():
+# #     vectorized_category_dummies.at[index, 'category'] = value.ravel().tolist()
+# #
+# # vectorized_labelled_data = labelled_data
+# # vectorized_labelled_data['category'] = vectorized_category_dummies['category']
 #
-# labelled_data = pd.concat([labelled_data, temp], axis=1).drop(columns=['category'])
+# # %%
+# attributes_of_interest = ['citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai', 'price',
+#                           # 'date_stamp',
+#                           ]
+# headers = category_dummies.columns.tolist()
+# # headers.append('category')
 #
-# category_dummies = pd.get_dummies(labelled_data[['category_0', 'category_1', 'category_2', 'category_3']],
-#                                   prefix_sep='.',
-#                                   drop_first=True)
-# vectorized_category_dummies = pd.DataFrame(columns=['category'])
-# for index, value in category_dummies.iterrows():
-#     vectorized_category_dummies.at[index, 'category'] = value.ravel().tolist()
+# X_train, X_test, y_train, y_test = train_test_split(labelled_data
+#                                                     .drop(columns=headers),
+#                                                     # labelled_data['category'],
+#                                                     labelled_data[category_dummies.columns],
+#                                                     test_size=0.33, random_state=42)
 #
-# labelled_data_category_onehot = labelled_data
-# labelled_data_category_onehot['category'] = vectorized_category_dummies['category']
-# labelled_data_category_onehot = labelled_data_category_onehot\
-#     .drop(columns=['category_0', 'category_1', 'category_2', 'category_3'])
+# X_train = X_train[attributes_of_interest]
+# X_test = X_test[attributes_of_interest]
+#
+# # %%
+#
+# headers = ['citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai', 'price']
+# for header in headers:
+#     X_train[header] = X_train[header].fillna(0)
+#     X_test[header] = X_test[header].fillna(0)
+#
+# # %%
+# """
+# """
+# # TODO: justification
+#
+#
+# # %%
+#
+# # mlb = MultiLabelBinarizer()
+# # mlb.fit_transform(y_train)
+#
+# # %%
+#
+# y_train = y_train.to_numpy()
+#
+# # %%
+#
+# clf = RandomForestClassifier(max_depth=3, random_state=0)
+#
+# # classifier = OneVsRestClassifier(RandomForestClassifier(max_depth=2, random_state=0))
+# classifier = MultiOutputClassifier(clf, n_jobs=-1)
+# # classifier = LogisticRegression(random_state=0, multi_class='ovr')
+# kernel = 1.0 * RBF(1.0)
+# # classifier = GaussianProcessClassifier(kernel=kernel, random_state=0, multi_class='one_vs_rest')
+#
+# print('## Entrainement ##')
+# classifier.fit(X_train, y_train)
+# train_score = classifier.score(X_train, y_train)
+# print(f'Score d\'entraînement: {train_score}')
+#
+# print('## Test ##')
+# test_predictions = classifier.predict(X_test)
+# test_score = classifier.score(X_test, y_test)
+# print(f'Score de test: {test_score}')
