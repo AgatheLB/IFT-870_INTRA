@@ -9,13 +9,8 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.multioutput import MultiOutputClassifier
-from sklearn.multiclass import OneVsRestClassifier
-from sklearn.svm import LinearSVC
-from sklearn.preprocessing import MultiLabelBinarizer
-from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.gaussian_process import GaussianProcessClassifier
-from sklearn.gaussian_process.kernels import RBF
+
 
 import difflib
 from functools import partial
@@ -85,6 +80,10 @@ def get_mean_price_per_year():
 
 def rename_df_headers(table, dict_headers):
     return table.rename(columns=dict_headers)
+
+
+def get_score_sequence_matching(s, c1, c2):
+    return difflib.SequenceMatcher(None, s[c1], s[c2]).ratio()
 
 
 # %%
@@ -377,9 +376,9 @@ décide d'attribuer à 0.
 
 # %%
 
-headers = ['citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai']
-for header in headers:
-    influence[header] = influence[header].fillna(0)
+# headers = ['citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai']
+# for header in headers:
+#     influence[header] = influence[header].fillna(0)
 
 # %%
 """
@@ -476,21 +475,16 @@ plt.show()
 
 """
 
-
-# %%
-# TODO: get key words from journal_name, publisher
-
-def get_score_sequence_matching(s, c1, c2):
-    return difflib.SequenceMatcher(None, s[c1], s[c2]).ratio()
-
-
 # %%
 
 labelled_data = labelled_data[labelled_data['price'].notna()]
 
 headers = ['citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai', 'price']
-for header in headers:
-    labelled_data[header] = labelled_data[header].fillna(0)
+
+# for header in headers:
+#     labelled_data[header] = labelled_data[header].fillna(0)
+
+labelled_data = labelled_data.dropna(axis=0, subset=headers)
 
 # %%
 
@@ -505,100 +499,66 @@ labelled_data['pub_name_sm_category'] = labelled_data.apply(partial(get_score_se
 
 labelled_data = labelled_data.drop(columns=['category'])
 print(f'size labelled_data before splitting: {labelled_data.shape[0]}')
-# %%
-
-# vectorized_category_dummies = pd.DataFrame(columns=['category'])
-# for index, value in labelled_data[category_dummies.columns].iterrows():
-#     vectorized_category_dummies.at[index, 'category'] = value.ravel().tolist()
-#
-# vectorized_labelled_data = labelled_data
-# vectorized_labelled_data['category'] = vectorized_category_dummies['category']
 
 # %%
 attributes_of_interest = ['citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai', 'price',
                           # 'date_stamp',
                           'journal_name_sm_category', 'pub_name_sm_category']
 headers = category_dummies.columns.tolist()
-# headers.append('category')
-
-X_train, X_test, y_train, y_test = train_test_split(labelled_data
-                                                    .drop(columns=headers),
-                                                    # labelled_data['category'],
-                                                    labelled_data[category_dummies.columns],
-                                                    test_size=0.33, random_state=42)
-
-X_train = X_train[attributes_of_interest]
-X_test = X_test[attributes_of_interest]
-
-
-# %%
-"""
-"""
-# TODO: justification
-
 
 # %%
 
-# mlb = MultiLabelBinarizer()
-# mlb.fit_transform(y_train)
-
-# %%
-
-y_train = y_train.to_numpy()
-
-# %%
-
-
-# classifier = OneVsRestClassifier(clf)
-
-# %%
-
-clfs = {'KNeighborsClassifier': KNeighborsClassifier(n_neighbors=3),
-        'RandomForestClassifier':  RandomForestClassifier(max_depth=10, random_state=1)}
+clfs = {'RandomForestClassifier': RandomForestClassifier()}
 
 best_model = {'name': '', 'score': 0, 'model': None}
-
 for name, clf in clfs.items():
-    print(f'Modèle {name}')
-    print('## Entrainement ##')
-    classifier = MultiOutputClassifier(clf, n_jobs=-1)
-    classifier.fit(X_train, y_train)
-    train_score = classifier.score(X_train, y_train)
-    print(f'Score d\'entraînement: {train_score}')
+    for i in range (14, 15):
+    # for i in range(13, 16): TODO
+        X_train, X_test, y_train, y_test = train_test_split(labelled_data.drop(columns=headers),
+                                                            labelled_data[category_dummies.columns],
+                                                            test_size=0.33, random_state=42)
+        X_train = X_train[attributes_of_interest]
+        X_test = X_test[attributes_of_interest]
+        y_train = y_train.to_numpy()
 
-    print('## Test ##')
-    test_predictions = classifier.predict(X_test)
-    test_score = classifier.score(X_test, y_test)
-    print(f'Score de test: {test_score}')
+        clf.set_params(max_depth=i)
 
-    if test_score > best_model.get('score'):
-        best_model['name'], best_model['score'], best_model['model'] = name, test_score, clf
+        print(f'Modèle {name} {i}')
+        print('## Entrainement ##')
+        classifier = MultiOutputClassifier(clf, n_jobs=-1)
+        classifier.fit(X_train, y_train)
+        train_score = classifier.score(X_train, y_train)
+        print(f'Score d\'entraînement: {train_score}')
+
+        print('## Test ##')
+        test_predictions = classifier.predict(X_test)
+        test_score = classifier.score(X_test, y_test)
+        print(f'Score de test: {test_score}')
+
+        if test_score > best_model.get('score'):
+            best_model['name'], best_model['score'], best_model['model'] = name + ' ' + str(i), test_score, clf
 
 print(f"Le modèle présentant le meilleur score est {best_model.get('name')} avec {best_model.get('score')}")
+
 
 # %%
 """
 Résultats des différents essais:
 
--> Essais avec price nan fixés à 0:
-    MultiOutputClassifier + RandomForestClassifier = ~0%
+Modèle KNeighborsClassifier 3
+## Entrainement ##
+Score d'entraînement: 0.6727145847871598
+## Test ##
+Score de test: 0.3988684582743989
 
--> Essais avec price nan droped:
-    MultiOutputClassifier + RandomForestClassifier(10) = 50% 40% 
-    MultiOutputClassifier + KNeighborsClassifier(2) = 40% 22%
-    MultiOutputClassifier + KNeighborsClassifier(3) = 50% 27%
-    MultiOutputClassifier + KNeighborsClassifier(5) = 30% 20%
-"""
+Modèle RandomForestClassifier 14
+## Entrainement ##
+Score d'entraînement: 0.9993021632937893
+## Test ##
+Score de test: 0.7199434229137199
 
-# %%
-# TODO: REVELATIONS
-"""
-méthode 1:
-calculer score sequence matcher avec seulement les catégories splittées et insérer chaque score dans la table data
 
-méthode 2:
-calcul score sequence matcher avec seulement les catégories splittées et garder information de la catégorie ayant le
-meilleur score
+
 """
 
 # %%
@@ -608,5 +568,3 @@ meilleur score
 """
 
 # %%
-
-
