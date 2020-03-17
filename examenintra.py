@@ -1,6 +1,7 @@
 # %%
 
 # leba3207
+from unicodedata import category
 
 import numpy as np
 import pandas as pd
@@ -10,7 +11,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.multioutput import MultiOutputClassifier
 from sklearn.ensemble import RandomForestClassifier
-
 
 import difflib
 from functools import partial
@@ -87,7 +87,6 @@ def get_score_sequence_matching(s, c1, c2):
 
 
 # %%
-
 """
 # Question 1: Exploration-Description
 ## Présenter une description de chacun des attributs des 3 tables, avec des graphiques pour la visualisation des 
@@ -175,7 +174,6 @@ print(price.head())
 
 # %%
 """
-
 price: information du prix d'une publication pour le journal associé à une date précise, en dollar US
 Si celui-ci est à 0, on peut coompendre que celui-ci est gratuit
 
@@ -235,9 +233,9 @@ plt.show()
 print(influence.head())
 
 # TODO: proj_ai moyenne
+
 # %%
 """
-
 journal_name: nom textuel du journal
 Les valeurs sont textuelles, ne suivant pas de valeurs catégorielles particulière à priori.
 
@@ -271,9 +269,10 @@ print(f"Valeurs possibles pour l'attribut proj_ai_year de influence:\n"
 L'attribut proj_ai_year ne présentant qu'une seule valeur nous indique que les valeurs de l'attribut proj_ai ont toutes
 été établies à la même période. 
 """
-# TODO: proj_ai sum in function of journal
-# %%
 
+# TODO: proj_ai sum in function of journal
+
+# %%
 """
 # Question 2: Prétraitement-Représentation
 ## A. Effectuer un prétraitement des données pour supprimer les duplications et corriger les incohérences s’il y en a.
@@ -389,6 +388,7 @@ En premier, on vérifie si les valeurs de l'attribut issn de influence sont exis
 dans journal.
 De même, on vérifie les valeurs de l'attribut journal_id de price sont existantes dans l'attribut issn dans journal. 
 """
+
 # %%
 
 check = influence['issn'].isin(journal['issn']).any()
@@ -432,7 +432,15 @@ On s'assure bien que les valeurs de l'attribut issn de la nouvelle date (data) s
 
 # %%
 """
-## B. Y-a-t-il une corrélation entre les catégories de journaux (attribut category) et les coûts de publication (attribut price)? Justifier la réponse.
+## B. Y-a-t-il une corrélation entre les catégories de journaux (attribut category) et les coûts de publication 
+(attribut price)? Justifier la réponse.
+
+Afin de déterminer s'il existe une corrélation entre les catégories et l'attribut prix, on s'intéresse à chaque 
+catégorie une à une. 
+Etant donné que chaque objet peut avoir plusieurs valeurs de catégories, on décide de séparer les catégories selon les 
+différents séparateurs observés (|, and, .). On les convertit ensuite en one hot.
+On calcule ensuite la corrélation catégorie par catégorie avec l'attribut prix. Pour cela, on ne considère que les 
+objets présentant la catégorie testée et les valeurs de prix associées.
 """
 
 # %%
@@ -442,10 +450,10 @@ data_to_predict = data[data['category'].isna()]
 
 # %%
 
-labelled_data['category'] = labelled_data['category'].str.replace(r'[\.\|&] | [\.\|&] ', '.', regex=True)
+labelled_data['category'] = labelled_data['category'].str.replace(r'[\.\|&] | [\.\|&] | and ', '.', regex=True)
 category_dummies = labelled_data['category'].str.get_dummies(sep='.')
 category_dummies = category_dummies.add_prefix('category_')
-
+print(f'Nombre de catégories après séparation: {category_dummies.shape[1]}')
 # %%
 
 labelled_data = pd.concat([labelled_data, category_dummies], axis=1) \
@@ -463,16 +471,30 @@ for header in category_dummies.columns:
 fig, ax = plt.subplots()
 plt.bar(categories_correlation.keys(), categories_correlation.values())
 plt.setp(ax.get_xticklabels(), rotation=30, horizontalalignment='right')
-plt.title(f'Catégories présentant des corrélations fortes avec l\'attribut prix et leurs valeurs')
+plt.title(f'Catégories présentant des corrélations fortes avec\nl\'attribut prix et leurs valeurs')
 plt.show()
 
 # %%
 """
-## C. Construire un modèle pour prédire les valeurs de catégorie de journaux manquantes de la façon la plus précise 
-## possible (cela inclut la sélection d’attributs informatifs, le choix et le paramétrage d’un modèle de classification, 
-## le calcul du score du modèle, l’application du modèle pour prédire les catégories manquantes). Justifier les choix 
-## effectués.
+On remarque que certaines catégories présentent effectement une corrélation non négligeable avec l'attribut prix.
+(Les catégories présentant une corrélation inférieures à 0.1 ne sont pas incluses dans le graphe)
+Les catégories présentant la plus forte corrélation sont 'cell biology' et 'molecular'.
+"""
 
+# %%
+"""
+## C. Construire un modèle pour prédire les valeurs de catégorie de journaux manquantes de la façon la plus précise 
+possible (cela inclut la sélection d’attributs informatifs, le choix et le paramétrage d’un modèle de classification, 
+le calcul du score du modèle, l’application du modèle pour prédire les catégories manquantes). Justifier les choix 
+effectués.
+
+Dans le but de prédire les catégories de journaux, on doit s'intéresser à plusieurs attributs qui pourraient nous 
+aider. Le nom du journal pourrait inclure certains mots-clés qui pourraient s'apparenter aux catégories du journal.
+Le nom de l'éditeur pourrait également apporter de l'information sur les catégories. 
+Etant donné qu'on a pu trouver certaines corrélations entre l'attribut prix et les catégories, on prend également en 
+compte ce paramètre. 
+Les informations de citation du journal pourraient également se révéler porteuses d'informations, ainsi que l'influence
+des articles.
 """
 
 # %%
@@ -480,10 +502,6 @@ plt.show()
 labelled_data = labelled_data[labelled_data['price'].notna()]
 
 headers = ['citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai', 'price']
-
-# for header in headers:
-#     labelled_data[header] = labelled_data[header].fillna(0)
-
 labelled_data = labelled_data.dropna(axis=0, subset=headers)
 
 # %%
@@ -503,8 +521,22 @@ print(f'size labelled_data before splitting: {labelled_data.shape[0]}')
 # %%
 attributes_of_interest = ['citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai', 'price',
                           # 'date_stamp',
-                          'journal_name_sm_category', 'pub_name_sm_category']
+                          # 'journal_name_sm_category', 'pub_name_sm_category'
+                          ]
 headers = category_dummies.columns.tolist()
+
+# %%
+"""
+On applique des modèles de classification ayant la capacité de pouvoir préduire des labels multiples. 
+Pour cela, on utilise la méthode MultiOutputClassifier de sklearn afin qui consiste à adapter un classificateur par 
+cible. 
+A partir de là, on a pu essayer plusieurs types de classification, les deux meilleurs se sont révélés être les random 
+forest et les K plus proches voisins. 
+
+Le code suivant sert à faire une recherche d'hyperparamètres (succinte) sur un classification random forest. 
+Pour le confort du temps de compilation, je n'ai pas intégré au rendu le classification K plus proche voisin, cependant
+le résultat du meilleur modèle trouvé est décrit ci-dessous. 
+"""
 
 # %%
 
@@ -512,8 +544,8 @@ clfs = {'RandomForestClassifier': RandomForestClassifier()}
 
 best_model = {'name': '', 'score': 0, 'model': None}
 for name, clf in clfs.items():
-    for i in range (14, 15):
-    # for i in range(13, 16): TODO
+    # for i in range(15, 17): # TODO
+    for i in range(15, 16):
         X_train, X_test, y_train, y_test = train_test_split(labelled_data.drop(columns=headers),
                                                             labelled_data[category_dummies.columns],
                                                             test_size=0.33, random_state=42)
@@ -540,31 +572,69 @@ for name, clf in clfs.items():
 
 print(f"Le modèle présentant le meilleur score est {best_model.get('name')} avec {best_model.get('score')}")
 
-
 # %%
 """
 Résultats des différents essais:
 
-Modèle KNeighborsClassifier 3
-## Entrainement ##
+Modèle KNeighborsClassifier, K=3
+--Entrainement
 Score d'entraînement: 0.6727145847871598
-## Test ##
+--Test
 Score de test: 0.3988684582743989
 
-Modèle RandomForestClassifier 14
-## Entrainement ##
+Modèle RandomForestClassifier, profondeur max=14
+--Entrainement
 Score d'entraînement: 0.9993021632937893
-## Test ##
+--Test
 Score de test: 0.7199434229137199
 
+Modèle RandomForestClassifier, profondeur max=15
+--Entrainement
+Score d'entraînement: 0.9986043265875785
+--Test
+Score de test: 0.7213578500707214
+"""
 
-
+# %%
+"""
+On conclut ainsi que le classificateur random forest ayant une profondeur maximale de 15 présente des résultats se 
+trouve être le plus performant.  
+Aussi, on se trouve en présence de résultats très performants, étant donné qu'on dispose de 88 catégories.
 """
 
 # %%
 """
 # Question 3: Régréssion-clustering
 ## A. Supprimer tous les attributs ayant plus de 50% de données manquantes.
+
+On repart avec nos 3 tables originales.
 """
 
+
 # %%
+
+def remove_empty_attribute(table):
+    for header in table:
+        if table[header].isna().sum() * 100 / len(table) > 50:
+            table = table.drop(columns=header)
+            headers.append(header)
+        return table
+
+
+# %%
+reduced_journal = journal
+reduced_price = price
+reduced_influence = influence
+
+reduced_journal = remove_empty_attribute(reduced_journal)
+reduced_price = remove_empty_attribute(reduced_price)
+reduced_influence = remove_empty_attribute(reduced_influence)
+
+# %%
+"""
+## B. Construire un modèle pour prédire le coût actuel de publication (attribut «price») à partir des autres attributs 
+(cela inclut la sélection d’attributs informatifs, le choix et le paramétrage d’un modèle derégression, le calcul du 
+score du modèle, l’application du modèle pour prédire lescoûts).Justifier leschoix effectués.Lister les 10 revues qui
+ s’écartent le plus (en + ou -) de la valeur prédite.
+ 
+"""
