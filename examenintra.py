@@ -3,6 +3,7 @@
 # leba3207
 from unicodedata import category
 from tqdm import tqdm
+import gc
 
 import numpy as np
 import pandas as pd
@@ -12,6 +13,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.multioutput import MultiOutputClassifier
 from sklearn.ensemble import RandomForestClassifier
+
+from sklearn.ensemble import RandomForestRegressor
 
 import difflib
 from functools import partial
@@ -87,6 +90,14 @@ def get_score_sequence_matching(s, c1, category):
     if s[c1] is np.nan:
         return 0
     return difflib.SequenceMatcher(None, s[c1], category).ratio()
+
+
+def get_empty_attribute_to_remove(table):
+    headers = []
+    for header in table.columns:
+        if table[header].isna().sum() * 100 / len(table) > 50:
+            headers.append(header)
+    return headers
 
 
 # %%
@@ -436,18 +447,18 @@ objets présentant la catégorie testée et les valeurs de prix associées.
 
 # %%
 
-labelled_data = data[data['category'].notna()]
-data_to_predict = data[data['category'].isna()]
+cat_labelled_data = data[data['category'].notna()]
+cat_data_to_predict = data[data['category'].isna()]
 
 # %%
 
-labelled_data['category'] = labelled_data['category'].str.replace(r'[\.\|&] | [\.\|&] | and ', '.', regex=True)
-category_dummies = labelled_data['category'].str.get_dummies(sep='.')
+cat_labelled_data['category'] = cat_labelled_data['category'].str.replace(r'[\.\|&] | [\.\|&] | and ', '.', regex=True)
+category_dummies = cat_labelled_data['category'].str.get_dummies(sep='.')
 category_dummies_prefix = category_dummies.add_prefix('category_')
 print(f'Nombre de catégories après séparation: {category_dummies.shape[1]}')
 # %%
 
-labelled_data = pd.concat([labelled_data, category_dummies_prefix], axis=1) \
+cat_labelled_data = pd.concat([cat_labelled_data, category_dummies_prefix], axis=1) \
     # .drop(columns=['category'])
 
 # %%
@@ -455,7 +466,7 @@ labelled_data = pd.concat([labelled_data, category_dummies_prefix], axis=1) \
 categories_correlation = {}
 
 for header in category_dummies_prefix.columns:
-    corr = labelled_data[header].corr(labelled_data['price'])
+    corr = cat_labelled_data[header].corr(cat_labelled_data['price'])
     if abs(corr) > 0.1:
         categories_correlation[header] = corr
 
@@ -467,50 +478,52 @@ plt.show()
 
 # %%
 """
-On remarque que certaines catégories présentent effectement une corrélation non négligeable avec l'attribut prix.
+On remarque que certaines catégories présentent effectement une légère corrélation avec l'attribut prix.
 (Les catégories présentant une corrélation inférieures à 0.1 ne sont pas incluses dans le graphe)
 Les catégories présentant la plus forte corrélation sont 'cell biology' et 'molecular'.
+Cependant, cette corrélation remarquée est très faible et peut être négligeable.
 """
 
 # %%
 """
-## C. Construire un modèle pour prédire les valeurs de catégorie de journaux manquantes de la façon la plus précise 
-possible (cela inclut la sélection d’attributs informatifs, le choix et le paramétrage d’un modèle de classification, 
-le calcul du score du modèle, l’application du modèle pour prédire les catégories manquantes). Justifier les choix 
+## C. Construire un modèle pour prédire les valeurs de catégorie de journaux manquantes de la façon la plus précise
+possible (cela inclut la sélection d’attributs informatifs, le choix et le paramétrage d’un modèle de classification,
+le calcul du score du modèle, l’application du modèle pour prédire les catégories manquantes). Justifier les choix
 effectués.
-
-Dans le but de prédire les catégories de journaux, on doit s'intéresser à plusieurs attributs qui pourraient nous 
+TODO: remove attributes price and citations from 2.C and ajust justification
+Dans le but de prédire les catégories de journaux, on doit s'intéresser à plusieurs attributs qui pourraient nous
 aider. Le nom du journal pourrait inclure certains mots-clés qui pourraient s'apparenter aux catégories du journal.
-Le nom de l'éditeur pourrait également apporter de l'information sur les catégories. 
-Etant donné qu'on a pu trouver certaines corrélations entre l'attribut prix et les catégories, on prend également en 
-compte ce paramètre. 
+Le nom de l'éditeur pourrait également apporter de l'information sur les catégories.
+Etant donné qu'on a pu trouver certaines corrélations entre l'attribut prix et les catégories, on prend également en
+compte ce paramètre.
 Les informations de citation du journal pourraient également se révéler porteuses d'informations, ainsi que l'influence
 des articles.
 """
 
 # %%
 
-labelled_data = labelled_data[labelled_data['price'].notna()]
+cat_labelled_data = cat_labelled_data[cat_labelled_data['price'].notna()]
 headers = ['citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai', 'price']
-labelled_data = labelled_data.dropna(axis=0, subset=headers)
+cat_labelled_data = cat_labelled_data.dropna(axis=0, subset=headers)
 
 # %%
 
 for header in tqdm(category_dummies.columns):
-    labelled_data['jn_' + header] = labelled_data.apply(partial(get_score_sequence_matching, c1='journal_name',
+    cat_labelled_data['jn_' + header] = cat_labelled_data.apply(partial(get_score_sequence_matching, c1='journal_name',
                                                                 category=header), axis=1)
-    labelled_data['pn_' + header] = labelled_data.apply(partial(get_score_sequence_matching, c1='pub_name',
+    cat_labelled_data['pn_' + header] = cat_labelled_data.apply(partial(get_score_sequence_matching, c1='pub_name',
                                                                 category=header), axis=1)
 
 # %%
 
-labelled_data = labelled_data.drop(columns=['category'])
-print(f'size labelled_data before splitting: {labelled_data.shape[0]}')
+cat_labelled_data = cat_labelled_data.drop(columns=['category'])
+print(f'size cat_labelled_data before splitting: {cat_labelled_data.shape[0]}')
 
 # %%
 
-jn_sm_headers = labelled_data.filter(like='jn_').columns.to_list()
-pn_sm_headers = labelled_data.filter(like='pn_').columns.to_list()
+jn_sm_headers = cat_labelled_data.filter(like='jn_').columns.to_list()
+pn_sm_headers = cat_labelled_data.filter(like='pn_').columns.to_list()
+# TODO: add date_stamp to attributes_of_interest
 attributes_of_interest = ['citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai', 'price',
                           # 'date_stamp',
                           ]
@@ -520,15 +533,15 @@ attributes_of_interest.extend(pn_sm_headers)
 # %%
 """
 ### Entrainement
-On applique des modèles de classification ayant la capacité de pouvoir préduire des labels multiples. 
-Pour cela, on utilise la méthode MultiOutputClassifier de sklearn afin qui consiste à adapter un classificateur par 
-cible. 
-A partir de là, on a pu essayer plusieurs types de classification, les deux meilleurs se sont révélés être les random 
-forest et les K plus proches voisins. 
+On applique des modèles de classification ayant la capacité de pouvoir préduire des labels multiples.
+Pour cela, on utilise la méthode MultiOutputClassifier de sklearn afin qui consiste à adapter un classificateur par
+cible.
+A partir de là, on a pu essayer plusieurs types de classification, les deux meilleurs se sont révélés être les random
+forest et les K plus proches voisins.
 
-Le code suivant sert à faire une recherche d'hyperparamètres (succinte) sur un classification random forest. 
+Le code suivant sert à faire une recherche d'hyperparamètres (succinte) sur un classification random forest.
 Pour le confort du temps de compilation, je n'ai pas intégré au rendu le classification K plus proche voisin, cependant
-le résultat du meilleur modèle trouvé est décrit ci-dessous. 
+le résultat du meilleur modèle trouvé est décrit ci-dessous.
 """
 
 # %%
@@ -539,8 +552,8 @@ best_model = {'name': '', 'score': 0, 'model': None}
 for name, clf in clfs.items():
     # for i in range(15, 17): # TODO
     for i in range(13, 14):
-        X_train, X_test, y_train, y_test = train_test_split(labelled_data[attributes_of_interest],
-                                                            labelled_data[category_dummies_prefix.columns],
+        X_train, X_test, y_train, y_test = train_test_split(cat_labelled_data[attributes_of_interest],
+                                                            cat_labelled_data[category_dummies_prefix.columns],
                                                             test_size=0.33, random_state=42)
         X_train = X_train[attributes_of_interest]
         X_test = X_test[attributes_of_interest]
@@ -584,8 +597,8 @@ Score de test: 0.7369165487977369
 
 # %%
 """
-On conclut ainsi que le classificateur random forest ayant une profondeur maximale de 13 présente des résultats se 
-trouve être le plus performant.  
+On conclut ainsi que le classificateur random forest ayant une profondeur maximale de 13 présente des résultats se
+trouve être le plus performant.
 Aussi, on se trouve en présence de résultats très performants, étant donné qu'on dispose de 88 catégories.
 """
 
@@ -596,25 +609,21 @@ Aussi, on se trouve en présence de résultats très performants, étant donné 
 
 # %%
 
-data_to_predict = data_to_predict.dropna(axis=0, subset=headers)
+cat_data_to_predict = cat_data_to_predict.dropna(axis=0, subset=headers)
 
 # %%
 
 for header in tqdm(category_dummies.columns):
-    data_to_predict['jn_' + header] = data_to_predict.apply(partial(get_score_sequence_matching, c1='journal_name',
+    cat_data_to_predict['jn_' + header] = cat_data_to_predict.apply(partial(get_score_sequence_matching, c1='journal_name',
                                                                     category=header), axis=1)
-    data_to_predict['pn_' + header] = data_to_predict.apply(partial(get_score_sequence_matching, c1='pub_name',
+    cat_data_to_predict['pn_' + header] = cat_data_to_predict.apply(partial(get_score_sequence_matching, c1='pub_name',
                                                                     category=header), axis=1)
-
-# %%
-
-data_to_predict = data_to_predict[attributes_of_interest]
 
 # %%
 
 clf = best_model.get('model')
-predictions = pd.DataFrame(clf.predict(data_to_predict))
-predictions.columns = category_dummies.columns
+predictions = pd.DataFrame(clf.predict(cat_data_to_predict[attributes_of_interest]))
+predictions.columns = category_dummies_prefix.columns
 
 # %%
 
@@ -633,37 +642,79 @@ plt.title(f'')
 plt.show()
 
 # %%
+
+# add categories predictions to their objects in table cat_data_to_predict
+predictions = predictions.set_index(cat_data_to_predict.index.copy())
+for header in predictions.columns:
+    cat_data_to_predict[header] = predictions[header]
+
+# %%
 """
 # Question 3: Régression-clustering
 ## A. Supprimer tous les attributs ayant plus de 50% de données manquantes.
 
-On repart avec nos 3 tables originales.
+On établit les attributs à éliminer selon leur taux de valeurs manquantes avec nos 3 tables originales (journal, price
+et influence).
+On utilise nos données déjà travaillées qui sont dans les tables cat_labelled_data et cat_data_to_predict car celles-ci
+présentent toutes les données dont nous avons besoin. Comme on a des bons résultats de prédictions, on peut se 
+permettre de les utiliser pour la suite du travail. C'est donc sur ces données que nous allons éliminés ces attributs.
+On établit alors une nouvelle table (data) avec toutes ces données et les attributs présentant trop de valeurs 
+manquantes.
 """
 
 # %%
 
-# def remove_empty_attribute(table):
-#     for header in table:
-#         if table[header].isna().sum() * 100 / len(table) > 50:
-#             table = table.drop(columns=header)
-#             headers.append(header)
-#         return table
-#
-#
-# # %%
-# reduced_journal = journal
-# reduced_price = price
-# reduced_influence = influence
-#
-# reduced_journal = remove_empty_attribute(reduced_journal)
-# reduced_price = remove_empty_attribute(reduced_price)
-# reduced_influence = remove_empty_attribute(reduced_influence)
+print(f'Attributs à éliminer de la table journal: {get_empty_attribute_to_remove(journal)}')
+print(f'Attributs à éliminer de la table price: {get_empty_attribute_to_remove(price)}')
+print(f'Attributs à éliminer de la table influence: {get_empty_attribute_to_remove(influence)}')
+
+# %%
+
+# TODO: remove attributes from table
+cat_data_to_predict = cat_data_to_predict.drop(columns='category')
+data = cat_labelled_data.append(cat_data_to_predict, sort=False)
+data = data.drop(columns=['url_journal', 'influence_id', 'url_autor', 'license'])
 
 # %%
 """
 ## B. Construire un modèle pour prédire le coût actuel de publication (attribut «price») à partir des autres attributs 
-(cela inclut la sélection d’attributs informatifs, le choix et le paramétrage d’un modèle derégression, le calcul du 
-score du modèle, l’application du modèle pour prédire lescoûts).Justifier leschoix effectués.Lister les 10 revues qui
- s’écartent le plus (en + ou -) de la valeur prédite.
+(cela inclut la sélection d’attributs informatifs, le choix et le paramétrage d’un modèle de régression, le calcul du 
+score du modèle, l’application du modèle pour prédire les coûts).Justifier les choix effectués.
+Lister les 10 revues qui s’écartent le plus (en + ou -) de la valeur prédite.
  
+ 
+Tout d'abord, nous décidons de ne pas utiliser les attributs à éliminer présenter un nombre conséquent de valeurs 
+manquantes, que nous avons trouvés dans la question 3.A
+ 
+L'attribut date_stamp dans price établissant la date à laquelle le prix a été mesuré semble intéressant.
+
+On a vu question 2B que l'attribut prix n'est pas fortement corrélés aux catégories d'un journal, cependant il existait
+certaines catégories présentant une certaine corrélation non négligeable. On peut reprendre alors les catégories que 
+l'on a transformés en one hot à la question 2.C. Aussi, étant donné les bons résultats du modèle de classification des
+catégories trouvé précédemment, on envisage d'utiliser également ces objets. 
+L'information d'un journal sur son hybridicité pourrait également faire varier son prix 
+
+Les attributs de la table influence semblent être pertinentes pour la prédiction du prix, en effet, tous les 
+informations sur le nombre de citations pourraient se révéler intéressantes quant à la prédiction du prix d'un 
+journal. Aussi, l'attribut informant sur le score d'influence du journal pourrait se révéler intéressant. 
+Etant donné que l'attribut proj_ai_year présente toujours la même valeur, il n'est pas vraiment pertinent de le 
+conserver. 
 """
+
+# %%
+
+attributes_of_interest = [
+    #     'date_stamp',
+    'citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai',
+    'is_hybrid', 'price']
+attributes_of_interest.extend(category_dummies_prefix.columns)
+
+# %%
+
+price_labelled_data = data[attributes_of_interest]
+
+# %%
+
+X_train, X_test, y_train, y_test = train_test_split(cat_labelled_data[attributes_of_interest],
+                                                    cat_labelled_data[category_dummies_prefix.columns],
+                                                    test_size=0.33, random_state=42)
