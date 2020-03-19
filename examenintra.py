@@ -2,6 +2,7 @@
 
 # leba3207
 from unicodedata import category
+from tqdm import tqdm
 
 import numpy as np
 import pandas as pd
@@ -82,8 +83,10 @@ def rename_df_headers(table, dict_headers):
     return table.rename(columns=dict_headers)
 
 
-def get_score_sequence_matching(s, c1, c2):
-    return difflib.SequenceMatcher(None, s[c1], s[c2]).ratio()
+def get_score_sequence_matching(s, c1, category):
+    if s[c1] is np.nan:
+        return 0
+    return difflib.SequenceMatcher(None, s[c1], category).ratio()
 
 
 # %%
@@ -369,18 +372,6 @@ print(f"Unicité de l'attribut issn dans la table influence: {check}")
 
 # %%
 """
-Les attributs citation_count_sum, paper_count_sum, avg_cites_per_paper et proj_ai présentent des valeurs nulles que l'on
-décide d'attribuer à 0.
-"""
-
-# %%
-
-# headers = ['citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai']
-# for header in headers:
-#     influence[header] = influence[header].fillna(0)
-
-# %%
-"""
 ## Merge
 Afin de simplifier les opérations, on génère une seule table reprenant les informations des trois tables.
 On vérifie d'abord si les identifiants communs aux différentes tables sont présentes dans les tables à merger.
@@ -452,18 +443,18 @@ data_to_predict = data[data['category'].isna()]
 
 labelled_data['category'] = labelled_data['category'].str.replace(r'[\.\|&] | [\.\|&] | and ', '.', regex=True)
 category_dummies = labelled_data['category'].str.get_dummies(sep='.')
-category_dummies = category_dummies.add_prefix('category_')
+category_dummies_prefix = category_dummies.add_prefix('category_')
 print(f'Nombre de catégories après séparation: {category_dummies.shape[1]}')
 # %%
 
-labelled_data = pd.concat([labelled_data, category_dummies], axis=1) \
+labelled_data = pd.concat([labelled_data, category_dummies_prefix], axis=1) \
     # .drop(columns=['category'])
 
 # %%
 
 categories_correlation = {}
 
-for header in category_dummies.columns:
+for header in category_dummies_prefix.columns:
     corr = labelled_data[header].corr(labelled_data['price'])
     if abs(corr) > 0.1:
         categories_correlation[header] = corr
@@ -500,33 +491,35 @@ des articles.
 # %%
 
 labelled_data = labelled_data[labelled_data['price'].notna()]
-
 headers = ['citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai', 'price']
 labelled_data = labelled_data.dropna(axis=0, subset=headers)
 
 # %%
 
-journal_name_score_match_category = pd.Series()
-publisher_name_score_match_category = pd.Series()
+for header in tqdm(category_dummies.columns):
+    labelled_data['jn_' + header] = labelled_data.apply(partial(get_score_sequence_matching, c1='journal_name',
+                                                                category=header), axis=1)
+    labelled_data['pn_' + header] = labelled_data.apply(partial(get_score_sequence_matching, c1='pub_name',
+                                                                category=header), axis=1)
 
-labelled_data['journal_name_sm_category'] = labelled_data.apply(partial(get_score_sequence_matching, c1='journal_name',
-                                                                        c2='category'), axis=1)
-labelled_data['pub_name_sm_category'] = labelled_data.apply(partial(get_score_sequence_matching, c1='pub_name',
-                                                                    c2='category'), axis=1)
 # %%
 
 labelled_data = labelled_data.drop(columns=['category'])
 print(f'size labelled_data before splitting: {labelled_data.shape[0]}')
 
 # %%
+
+jn_sm_headers = labelled_data.filter(like='jn_').columns.to_list()
+pn_sm_headers = labelled_data.filter(like='pn_').columns.to_list()
 attributes_of_interest = ['citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai', 'price',
                           # 'date_stamp',
-                          # 'journal_name_sm_category', 'pub_name_sm_category'
                           ]
-headers = category_dummies.columns.tolist()
+attributes_of_interest.extend(jn_sm_headers)
+attributes_of_interest.extend(pn_sm_headers)
 
 # %%
 """
+### Entrainement
 On applique des modèles de classification ayant la capacité de pouvoir préduire des labels multiples. 
 Pour cela, on utilise la méthode MultiOutputClassifier de sklearn afin qui consiste à adapter un classificateur par 
 cible. 
@@ -545,9 +538,9 @@ clfs = {'RandomForestClassifier': RandomForestClassifier()}
 best_model = {'name': '', 'score': 0, 'model': None}
 for name, clf in clfs.items():
     # for i in range(15, 17): # TODO
-    for i in range(15, 16):
-        X_train, X_test, y_train, y_test = train_test_split(labelled_data.drop(columns=headers),
-                                                            labelled_data[category_dummies.columns],
+    for i in range(13, 14):
+        X_train, X_test, y_train, y_test = train_test_split(labelled_data[attributes_of_interest],
+                                                            labelled_data[category_dummies_prefix.columns],
                                                             test_size=0.33, random_state=42)
         X_train = X_train[attributes_of_interest]
         X_test = X_test[attributes_of_interest]
@@ -556,19 +549,19 @@ for name, clf in clfs.items():
         clf.set_params(max_depth=i)
 
         print(f'Modèle {name} {i}')
-        print('## Entrainement ##')
+        print('-- Entrainement')
         classifier = MultiOutputClassifier(clf, n_jobs=-1)
         classifier.fit(X_train, y_train)
         train_score = classifier.score(X_train, y_train)
         print(f'Score d\'entraînement: {train_score}')
 
-        print('## Test ##')
+        print('-- Test')
         test_predictions = classifier.predict(X_test)
         test_score = classifier.score(X_test, y_test)
         print(f'Score de test: {test_score}')
 
         if test_score > best_model.get('score'):
-            best_model['name'], best_model['score'], best_model['model'] = name + ' ' + str(i), test_score, clf
+            best_model['name'], best_model['score'], best_model['model'] = name + ' ' + str(i), test_score, classifier
 
 print(f"Le modèle présentant le meilleur score est {best_model.get('name')} avec {best_model.get('score')}")
 
@@ -576,59 +569,95 @@ print(f"Le modèle présentant le meilleur score est {best_model.get('name')} av
 """
 Résultats des différents essais:
 
-Modèle KNeighborsClassifier, K=3
---Entrainement
-Score d'entraînement: 0.6727145847871598
---Test
-Score de test: 0.3988684582743989
+Modèle RandomForestClassifier 12
+-- Entrainement
+Score d'entraînement: 0.9916259595254711
+-- Test
+Score de test: 0.7312588401697313
 
-Modèle RandomForestClassifier, profondeur max=14
---Entrainement
-Score d'entraînement: 0.9993021632937893
---Test
-Score de test: 0.7199434229137199
-
-Modèle RandomForestClassifier, profondeur max=15
---Entrainement
-Score d'entraînement: 0.9986043265875785
---Test
-Score de test: 0.7213578500707214
+Modèle RandomForestClassifier 13
+-- Entrainement
+Score d'entraînement: 0.994417306350314
+-- Test
+Score de test: 0.7369165487977369
 """
 
 # %%
 """
-On conclut ainsi que le classificateur random forest ayant une profondeur maximale de 15 présente des résultats se 
+On conclut ainsi que le classificateur random forest ayant une profondeur maximale de 13 présente des résultats se 
 trouve être le plus performant.  
 Aussi, on se trouve en présence de résultats très performants, étant donné qu'on dispose de 88 catégories.
 """
 
 # %%
 """
-# Question 3: Régréssion-clustering
+### Prédictions
+"""
+
+# %%
+
+data_to_predict = data_to_predict.dropna(axis=0, subset=headers)
+
+# %%
+
+for header in tqdm(category_dummies.columns):
+    data_to_predict['jn_' + header] = data_to_predict.apply(partial(get_score_sequence_matching, c1='journal_name',
+                                                                    category=header), axis=1)
+    data_to_predict['pn_' + header] = data_to_predict.apply(partial(get_score_sequence_matching, c1='pub_name',
+                                                                    category=header), axis=1)
+
+# %%
+
+data_to_predict = data_to_predict[attributes_of_interest]
+
+# %%
+
+clf = best_model.get('model')
+predictions = pd.DataFrame(clf.predict(data_to_predict))
+predictions.columns = category_dummies.columns
+
+# %%
+
+count_categories = {}
+for header in predictions.columns:
+    nb = predictions[header].sum()
+    if nb >= 1:
+        count_categories[header] = nb
+
+# %%
+
+fig, ax = plt.subplots()
+plt.bar(count_categories.keys(), count_categories.values())
+plt.setp(ax.get_xticklabels(), rotation=30, horizontalalignment='right')
+plt.title(f'')
+plt.show()
+
+# %%
+"""
+# Question 3: Régression-clustering
 ## A. Supprimer tous les attributs ayant plus de 50% de données manquantes.
 
 On repart avec nos 3 tables originales.
 """
 
-
 # %%
 
-def remove_empty_attribute(table):
-    for header in table:
-        if table[header].isna().sum() * 100 / len(table) > 50:
-            table = table.drop(columns=header)
-            headers.append(header)
-        return table
-
-
-# %%
-reduced_journal = journal
-reduced_price = price
-reduced_influence = influence
-
-reduced_journal = remove_empty_attribute(reduced_journal)
-reduced_price = remove_empty_attribute(reduced_price)
-reduced_influence = remove_empty_attribute(reduced_influence)
+# def remove_empty_attribute(table):
+#     for header in table:
+#         if table[header].isna().sum() * 100 / len(table) > 50:
+#             table = table.drop(columns=header)
+#             headers.append(header)
+#         return table
+#
+#
+# # %%
+# reduced_journal = journal
+# reduced_price = price
+# reduced_influence = influence
+#
+# reduced_journal = remove_empty_attribute(reduced_journal)
+# reduced_price = remove_empty_attribute(reduced_price)
+# reduced_influence = remove_empty_attribute(reduced_influence)
 
 # %%
 """
