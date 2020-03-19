@@ -715,6 +715,20 @@ price_labelled_data = data[attributes_of_interest]
 
 # %%
 
-X_train, X_test, y_train, y_test = train_test_split(cat_labelled_data[attributes_of_interest],
-                                                    cat_labelled_data[category_dummies_prefix.columns],
+X_train, X_test, y_train, y_test = train_test_split(price_labelled_data.drop(columns='price'),
+                                                    price_labelled_data['price'],
                                                     test_size=0.33, random_state=42)
+
+regr = RandomForestRegressor(max_depth=22, n_estimators=300, n_jobs=-1)
+print('-- Entrainement')
+regr.fit(X_train, y_train)
+train_score = regr.score(X_train, y_train)
+print(f'Score d\'entraînement: {train_score}')
+
+print('-- Test')
+test_predictions = regr.predict(X_test)
+test_score = regr.score(X_test, y_test)
+print(f'Score de test: {test_score}')
+
+# %%
+
