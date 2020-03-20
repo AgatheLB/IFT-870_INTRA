@@ -3,7 +3,7 @@
 # leba3207
 from unicodedata import category
 from tqdm import tqdm
-import gc
+import heapq
 
 import numpy as np
 import pandas as pd
@@ -670,7 +670,6 @@ print(f'Attributs à éliminer de la table influence: {get_empty_attribute_to_re
 
 # %%
 
-# TODO: remove attributes from table
 cat_data_to_predict = cat_data_to_predict.drop(columns='category')
 data = cat_labelled_data.append(cat_data_to_predict, sort=False)
 data = data.drop(columns=['url_journal', 'influence_id', 'url_autor', 'license'])
@@ -699,6 +698,8 @@ informations sur le nombre de citations pourraient se révéler intéressantes q
 journal. Aussi, l'attribut informant sur le score d'influence du journal pourrait se révéler intéressant. 
 Etant donné que l'attribut proj_ai_year présente toujours la même valeur, il n'est pas vraiment pertinent de le 
 conserver. 
+
+### Construction et estimation des performances du modèle
 """
 
 # %%
@@ -731,4 +732,26 @@ test_score = regr.score(X_test, y_test)
 print(f'Score de test: {test_score}')
 
 # %%
+"""
+### Application du modèle
+"""
 
+# %%
+
+predictions = pd.DataFrame(regr.predict(price_labelled_data.drop(columns='price')))
+predictions = predictions.set_index(data.index.copy())
+
+# %%
+
+difference_pred_real = dict()
+for index, p in predictions.iterrows():
+    difference_pred_real[data['journal_name'][index]] = abs(p[0] - data['price'][index])
+
+# %%
+
+worst_predictions = np.array(heapq.nlargest(10, difference_pred_real, key=difference_pred_real.get))
+worst_predictions_values = []
+for p in worst_predictions:
+    worst_predictions_values.append(difference_pred_real.get(p))
+
+worst_predictions = np.vstack([worst_predictions, worst_predictions_values])
