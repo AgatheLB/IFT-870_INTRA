@@ -510,9 +510,9 @@ cat_labelled_data = cat_labelled_data.dropna(axis=0, subset=headers)
 
 for header in tqdm(category_dummies.columns):
     cat_labelled_data['jn_' + header] = cat_labelled_data.apply(partial(get_score_sequence_matching, c1='journal_name',
-                                                                category=header), axis=1)
+                                                                        category=header), axis=1)
     cat_labelled_data['pn_' + header] = cat_labelled_data.apply(partial(get_score_sequence_matching, c1='pub_name',
-                                                                category=header), axis=1)
+                                                                        category=header), axis=1)
 
 # %%
 
@@ -614,10 +614,11 @@ cat_data_to_predict = cat_data_to_predict.dropna(axis=0, subset=headers)
 # %%
 
 for header in tqdm(category_dummies.columns):
-    cat_data_to_predict['jn_' + header] = cat_data_to_predict.apply(partial(get_score_sequence_matching, c1='journal_name',
-                                                                    category=header), axis=1)
+    cat_data_to_predict['jn_' + header] = cat_data_to_predict.apply(
+        partial(get_score_sequence_matching, c1='journal_name',
+                category=header), axis=1)
     cat_data_to_predict['pn_' + header] = cat_data_to_predict.apply(partial(get_score_sequence_matching, c1='pub_name',
-                                                                    category=header), axis=1)
+                                                                            category=header), axis=1)
 
 # %%
 
@@ -757,3 +758,33 @@ for p in worst_predictions:
     print(f'{p} : {difference_pred_real.get(p)}')
 
 worst_predictions = np.vstack([worst_predictions, worst_predictions_values])
+
+# %%
+"""
+## C. Construire un modèle pour grouper les revues selon le coût actuel de publication (attribut "price") et le score
+d'influence (attribut "proj_ai") (cela inclut la détermination du nombre de clusters, le choix et le paramétrage d'un
+modèle de clustering, l'application du modèle pour trouver les clusters). Justifier les choix.
+"""
+
+# %%
+
+from sklearn.cluster import KMeans
+
+attributes_of_interest = ['price', 'proj_ai']
+data_for_clustering = data[attributes_of_interest]
+
+plt.figure()
+y_pred = KMeans(n_clusters=3, random_state=42).fit_predict(data_for_clustering)
+plt.scatter(data_for_clustering['price'], data_for_clustering['proj_ai'], c=y_pred)
+plt.show()
+
+# %%
+
+from sklearn.cluster import OPTICS
+
+estim = OPTICS(min_samples=20)
+
+print(f'Entrainement et prédiction')
+y_pred = estim.fit_predict(data_for_clustering)
+plt.scatter(data_for_clustering['price'], data_for_clustering['proj_ai'], c=y_pred)
+plt.show()
