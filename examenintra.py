@@ -749,9 +749,11 @@ for index, p in predictions.iterrows():
 
 # %%
 
+print(f'Journaux dont leur prédiction du prix s\'éloigne le plus de la réalité:\n')
 worst_predictions = np.array(heapq.nlargest(10, difference_pred_real, key=difference_pred_real.get))
 worst_predictions_values = []
 for p in worst_predictions:
     worst_predictions_values.append(difference_pred_real.get(p))
+    print(f'{p} : {difference_pred_real.get(p)}')
 
 worst_predictions = np.vstack([worst_predictions, worst_predictions_values])
