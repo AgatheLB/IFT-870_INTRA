@@ -1,7 +1,7 @@
 # %%
 
 # leba3207
-from unicodedata import category
+
 from tqdm import tqdm
 import heapq
 
@@ -36,6 +36,9 @@ journal = pd.read_csv(data_folder + journal_file, sep=',', encoding='latin1')
 price = pd.read_csv(data_folder + price_file, sep=',', index_col=0)
 influence = pd.read_csv(data_folder + influence_file, sep=',', index_col=0)
 
+journal.name = 'journal'
+price.name = 'price'
+influence.name = 'influence'
 
 # %%
 
@@ -56,7 +59,6 @@ def lowercase_columns(table, headers):
         table[header] = table[header].str.lower()
 
 
-# TODO: include headers specification
 def get_df_duplicated_rows_dropped(table):
     return table.drop_duplicates()
 
@@ -64,7 +66,7 @@ def get_df_duplicated_rows_dropped(table):
 def plot_categories_frequency(table, header):
     fig, ax = plt.subplots()
     table[header].value_counts()[0:5].plot(ax=ax, kind='bar')
-    plt.title(f'Fréquence d\'apparition des catégories de l\'attribut {header}')
+    plt.title(f'Présentation des 5 valeurs les plus fréquentes de l\'attribut {header} pour la table {table.name}')
     plt.show()
 
 
@@ -103,8 +105,7 @@ def get_empty_attribute_to_remove(table):
 # %%
 """
 # Question 1: Exploration-Description
-## Présenter une description de chacun des attributs des 3 tables, avec des graphiques pour la visualisation des 
-statistiques descriptives au besoin.
+## Présenter une description de chacun des attributs des 3 tables, avec des graphiques pour la visualisation des statistiques descriptives au besoin.
 
 ### Table journal
 """
@@ -120,27 +121,32 @@ print(journal.head())
 # %%
 
 """
-issn: identifiant du journal
+issn: identifiant de la revue
 Les valeurs de cet attribut semblent suivre un format particulier tel que: 4 digits - 4 digits
+Etant donné que l'identifiant spécifie chaque revue, cet attribut devrait présenter des valeurs uniques pour chacun
+des objets.
 
-journal_name: nom textuel du journal
-Les valeurs sont textuelles, ne suivant pas de valeurs catégorielles particulière à priori.
+journal_name: nom textuel de la revue
+Les valeurs sont textuelles, ne suivant pas de valeurs catégorielles particulière à priori. Il n'existe pas de format
+spécifié, les valeurs s'en retrouvent donc très inconsistantes.
 
-pub_name: nom de l'éditeur du journal
-Les valeurs sont textuelles, ne suivant pas de valeurs catégorielles particulière à priori.
+pub_name: nom de l'éditeur de la revue
+Les valeurs sont textuelles, ne suivant pas de valeurs catégorielles particulière à priori. Il n'existe pas de format
+spécifié, les valeurs s'en retrouvent donc très inconsistantes.
 
-is_hybrid: indique si le journal est hybride, ce qui signifie que c'est une revue sur abonnement dont certains articles
-sont en libre accès, comme l'indique le site http://flourishoa.org/about.
+is_hybrid: indique si la revue est hybride. Si oui, cela signifie que cette revue est disponible par abonnement où 
+certains articles sont en libre accès et d'autres payants, comme l'indique le site http://flourishoa.org/about.
 
-category: renseigne sur la/les catégorie(s) des sujets abordés par le journal 
-Les valeurs sont textuelles et sont catégorielles. Chaque objet peut posséder des valeurs multiples pour cet attribut. La séparation entre les différentes valeurs semblent
-être inconsistante.
+category: renseigne sur la/les catégorie(s) des sujets abordés par la revue
+Les valeurs sont textuelles et sont catégorielles. Chaque objet peut posséder des valeurs multiples pour cet attribut. 
+La séparation entre les différentes valeurs semblent être inconsistante.
 
-url: indique l'adresse url du site du journal
+url: indique l'adresse web url du site de la revue
 
 
 Les attributs journal_name, pub_name et category étant des données textuelles très inconsistantes, je décide avant tout
-traitement et étude supplémentaire de transformer les valeurs en minuscule pour limiter au maximum l'inconsistence.
+traitement et étude supplémentaire de transformer les valeurs en minuscule pour limiter au maximum l'inconsistence
+inutile entre les différentes valeurs.
 """
 
 # %%
@@ -149,7 +155,7 @@ lowercase_columns(journal, ['journal_name', 'pub_name', 'category'])
 
 # %%
 
-print(f"Valeurs uniques des attributs de journal:\n"
+print(f"Valeurs uniques des attributs de journal présentant {journal.shape[0]} objets:\n"
       f"{get_uniqueness_attributes(journal)}")
 print(f"Ratio de valeurs vides pour les attributs de journal:\n"
       f"{get_ratio_missing_values(journal)}")
@@ -162,9 +168,9 @@ print(f"Valeurs possibles pour l'attribut category de journal:\n"
 # %%
 """
 Les attributs category et url présentent un nombre conséquent de valeurs manquantes.
-L'attribut issn présente des valeurs uniques pour chacun de ses objets.
+L'attribut issn présente, comme souhaité,  des valeurs uniques pour chacun de ses objets.
 
-On remarque qu'il existe uniquement deux valeurs pour l'attribut is_hybrid (soit 1 soit 0). 
+On remarque qu'il existe uniquement deux valeurs pour l'attribut is_hybrid (soit 1 soit 0), ce qui semble logique. 
 """
 
 # %%
@@ -173,9 +179,22 @@ print(f"Valeurs possibles de pub_name quand is_hybrid vaut 1:\n"
       f"{journal[journal['is_hybrid'] == 1]['pub_name'].unique()}")
 
 # %%
+"""
+Cela nous montre que parmi le grand nombre d'éditeurs possibles, seuls 4 permettent des revues hybrides.
+"""
+
+# %%
 
 plot_categories_frequency(journal, 'pub_name')
 plot_categories_frequency(journal, 'category')
+
+# %%
+"""
+Malgré l'inconsistence des valeurs de ces deux attributs, on s'aperçoit néanmoins que certaines catégories et éditeurs
+sont plus fréquents que d'autres.
+
+Cette table mériterait un travail sur l'inconsistence des valeurs de category afin de pouvoir approfondir.
+"""
 
 # %%
 """
@@ -599,12 +618,14 @@ Score de test: 0.7369165487977369
 """
 On conclut ainsi que le classificateur random forest ayant une profondeur maximale de 13 présente des résultats se
 trouve être le plus performant.
-Aussi, on se trouve en présence de résultats très performants, étant donné qu'on dispose de 88 catégories.
+Aussi, on se trouve en présence de résultats très performants, étant donné qu'on dispose de 88 labels à prédire qui 
+sont les catégories.
 """
 
 # %%
 """
 ### Prédictions
+On effectue maintenant les prédictions sur les objets présentant les catégories manquantes.
 """
 
 # %%
@@ -639,7 +660,7 @@ for header in predictions.columns:
 fig, ax = plt.subplots()
 plt.bar(count_categories.keys(), count_categories.values())
 plt.setp(ax.get_xticklabels(), rotation=30, horizontalalignment='right')
-plt.title(f'')
+plt.title(f'Somme des catégories prédites par le modèle')
 plt.show()
 
 # %%
@@ -683,7 +704,7 @@ score du modèle, l’application du modèle pour prédire les coûts).Justifier
 Lister les 10 revues qui s’écartent le plus (en + ou -) de la valeur prédite.
  
  
-Tout d'abord, nous décidons de ne pas utiliser les attributs à éliminer présenter un nombre conséquent de valeurs 
+Tout d'abord, nous décidons de ne pas utiliser les attributs que l'on a éliminé dans la question 3.A présenter un nombre conséquent de valeurs 
 manquantes, que nous avons trouvés dans la question 3.A
  
 L'attribut date_stamp dans price établissant la date à laquelle le prix a été mesuré semble intéressant.
@@ -704,7 +725,7 @@ conserver.
 """
 
 # %%
-
+# TODO: add date stamp
 attributes_of_interest = [
     #     'date_stamp',
     'citation_count_sum', 'paper_count_sum', 'avg_cites_per_paper', 'proj_ai',
